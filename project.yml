@@ -1,0 +1,48 @@
+name: AppDevMobileII
+options:
+  bundleIdPrefix: pe.edu.cibertec
+  deploymentTarget:
+    iOS: "15.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    IPHONEOS_DEPLOYMENT_TARGET: "15.0"
+    TARGETED_DEVICE_FAMILY: "1"
+targets:
+  AppDevMobileII:
+    type: application
+    platform: iOS
+    sources:
+      - path: AppDevMobileII
+        excludes:
+          - Info.plist
+    info:
+      path: AppDevMobileII/Info.plist
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: pe.edu.cibertec.AppDevMobileII
+        INFOPLIST_FILE: AppDevMobileII/Info.plist
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_STYLE: Automatic
+  AppDevMobileIIUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: AppDevMobileIIUITests
+    dependencies:
+      - target: AppDevMobileII
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: pe.edu.cibertec.AppDevMobileIIUITests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: AppDevMobileII
+schemes:
+  AppDevMobileII:
+    build:
+      targets:
+        AppDevMobileII: all
+        AppDevMobileIIUITests: [test]
+    test:
+      targets:
+        - AppDevMobileIIUITests
