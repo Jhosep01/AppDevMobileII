@@ -1,0 +1,103 @@
+name: Compilar iOS y Capturar Pantallas
+
+on:
+  push:
+  workflow_dispatch:
+
+env:
+  HOMEBREW_NO_AUTO_UPDATE: "1"
+  HOMEBREW_NO_INSTALL_CLEANUP: "1"
+
+jobs:
+  build_and_capture:
+    runs-on: macos-15
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Ubicar carpeta del proyecto
+        run: |
+          PROJ_FILE=$(find . -name "project.yml" -maxdepth 3 | head -n 1)
+          if [ -z "$PROJ_FILE" ]; then
+            echo "No se encontro project.yml"
+            ls -la
+            exit 1
+          fi
+          PROJ_DIR=$(dirname "$PROJ_FILE")
+          echo "PROJ_DIR=$PROJ_DIR" >> $GITHUB_ENV
+          echo "Carpeta detectada: $PROJ_DIR"
+
+      - name: Instalar XcodeGen
+        run: brew install xcodegen
+
+      - name: Compilar, ejecutar en Simulador y sacar capturas
+        run: |
+          cd "$PROJ_DIR"
+          xcodegen generate --spec project.yml
+
+          SIM_UDID=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)['devices']
+          for runtime, devs in sorted(data.items(), reverse=True):
+              if 'iOS' in runtime:
+                  for d in devs:
+                      if 'iPhone' in d['name'] and d.get('isAvailable', False):
+                          print(d['udid'])
+                          sys.exit(0)
+          ")
+          echo "Simulador elegido: $SIM_UDID"
+          xcrun simctl boot "$SIM_UDID" || true
+
+          xcodebuild test \
+            -project AppDevMobileII.xcodeproj \
+            -scheme AppDevMobileII \
+            -destination "platform=iOS Simulator,id=$SIM_UDID" \
+            -resultBundlePath TestResults.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+          mkdir -p Capturas_Raw Capturas
+          xcrun xcresulttool export attachments --path TestResults.xcresult --output-path Capturas_Raw || true
+          python3 - << 'EOF'
+          import os, json, shutil
+          raw = "Capturas_Raw"
+          out = "Capturas"
+          manifest_path = os.path.join(raw, "manifest.json")
+          copied = 0
+          if os.path.exists(manifest_path):
+              with open(manifest_path, "r", encoding="utf-8") as f:
+                  data = json.load(f)
+              for item in data:
+                  for att in item.get("attachments", []):
+                      fname = att.get("exportedFileName", "")
+                      suggested = att.get("suggestedHumanReadableName", fname)
+                      src = os.path.join(raw, fname)
+                      if os.path.exists(src) and fname.lower().endswith(".png"):
+                          clean = suggested.split("_0_")[0]
+                          if not clean.lower().endswith(".png"):
+                              clean += ".png"
+                          shutil.copy2(src, os.path.join(out, clean))
+                          copied += 1
+          if copied == 0:
+              for root, _, files in os.walk(raw):
+                  for i, f in enumerate(sorted(files), 1):
+                      if f.lower().endswith(".png"):
+                          shutil.copy2(os.path.join(root, f), os.path.join(out, f"Captura_{i}.png"))
+          print("Capturas extraidas:", os.listdir(out))
+          EOF
+
+          rm -rf AppDevMobileII.xcodeproj
+          xcodegen generate --spec project_entrega.yml
+          mkdir -p Entrega_Final
+          cp -R AppDevMobileII.xcodeproj Entrega_Final/
+          cp -R AppDevMobileII Entrega_Final/
+          cp -R Capturas Entrega_Final/
+          (cd Entrega_Final && zip -r "$GITHUB_WORKSPACE/Entrega_AppDevMobileII.zip" .)
+          cp -R Capturas "$GITHUB_WORKSPACE/Capturas_Finales"
+
+      - name: Subir ZIP listo para aula virtual
+        uses: actions/upload-artifact@v4
+        with:
+          name: Entrega_AppDevMobileII_Lista
+          path: |
+            Entrega_AppDevMobileII.zip
+            Capturas_Finales/*.png
